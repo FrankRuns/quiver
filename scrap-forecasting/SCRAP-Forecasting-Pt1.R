@@ -218,6 +218,46 @@ previous_horizon_weeks <- 12
 # create date framework
 forecast_dates <- date_framework("2015-01-05", 104, 14, forecast_horizon_weeks, previous_horizon_weeks, 364)
 
+#### Initial Benchmark ####
+
+# create forecast using basic 4 week out method
+bench1 <- order_data %>% group_by(Warehouse, Date) %>%
+  summarise(Total_Orders = sum(Order_Demand)) %>%
+  mutate(Wh_Dt = paste0(Warehouse, "_", Date)) %>%
+  mutate(Base_Date = paste0(Warehouse, "_", (Date - 28)))
+
+bench2 <- order_data %>% group_by(Warehouse, Date) %>%
+  summarise(Forecast_Orders = sum(Order_Demand)) %>%
+  mutate(Wh_Dt = paste0(Warehouse, "_", Date)) %>%
+  select(Wh_Dt, Forecast_Orders) %>%
+  ungroup(.)
+
+benchmark <- left_join(bench1, bench2, by=c("Base_Date"="Wh_Dt")) %>% 
+  select(Warehouse.x, Date, Total_Orders, Forecast_Orders) %>%
+  ungroup()
+
+# calculate overall accuracy of basic 4 week out method
+overall_bm <- benchmark %>%
+  filter(!is.na(Forecast_Orders)) %>%
+  filter(Date >= forecast_dates$target_start[27] & Date <= forecast_dates$target_end[27]) %>%
+  summarise(variance = (sum(Forecast_Orders, na.rm = TRUE) - sum(Total_Orders, na.rm = TRUE)) / sum(Total_Orders, na.rm = TRUE))
+
+overall_wh_bm <- benchmark %>%
+  filter(!is.na(Forecast_Orders)) %>%
+  filter(Date >= forecast_dates$target_start[27] & Date <= forecast_dates$target_end[27]) %>%
+  group_by(Warehouse.x) %>%
+  summarise(variance = (sum(Forecast_Orders, na.rm = TRUE) - sum(Total_Orders, na.rm = TRUE)) / sum(Total_Orders, na.rm = TRUE))
+
+# calculate MAPE of basic 4 week out method
+mape_bm <- benchmark %>%
+  filter(!is.na(Forecast_Orders)) %>%
+  filter(Date >= forecast_dates$target_start[27] & Date <= forecast_dates$target_end[27]) %>%
+  mutate(abs_variance = abs(Forecast_Orders - Total_Orders)) %>%
+  mutate(pct_error = abs_variance / Forecast_Orders) %>%
+  mutate(pct_error = ifelse(is.na(pct_error), 0, pct_error),
+         pct_error = ifelse(is.infinite(pct_error), 1, pct_error)) %>%
+  summarise(mape = mean(pct_error, na.rm = TRUE))
+
 #### Initial Forecast - Forecast ####
 
 # get expected year-over-year growth rate
